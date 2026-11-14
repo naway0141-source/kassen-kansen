@@ -1,0 +1,998 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>合戦観戦｜一戦入魂・戦術観戦ゲーム</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html, body { overscroll-behavior:none; }
+  body {
+    font-family:"Hiragino Mincho ProN","Hiragino Sans","Noto Sans JP",serif;
+    background:#2a2118 radial-gradient(900px 500px at 50% -10%, #4a3826 0%, #2a2118 60%);
+    color:#2b2118; min-height:100vh; display:flex; justify-content:center;
+  }
+  .wrap { width:min(1180px, 98vw); padding:14px 4px 26px; }
+  h1 { text-align:center; font-size:clamp(22px, 5vw, 32px); color:#f3e6c8; letter-spacing:.14em; }
+  h1 .accent { color:#e0aa3e; }
+  .sub { text-align:center; font-size:13px; color:#d8c9a3; margin:4px 0 12px; line-height:1.6; font-family:"Hiragino Sans","Noto Sans JP",sans-serif; }
+  .layout { display:flex; gap:12px; align-items:flex-start; }
+  .main { flex:1 1 auto; min-width:0; }
+  .side { flex:0 0 322px; display:flex; flex-direction:column; gap:10px; }
+  @media (max-width:900px) { .layout { flex-direction:column; } .side { flex-basis:auto; width:100%; } }
+  .panel { background:#efe3c2; border:2px solid #8a6d3b; border-radius:10px; padding:10px 12px; box-shadow:0 2px 8px rgba(0,0,0,.35); }
+  .panel h2 { font-size:15px; border-bottom:1px solid #b39b5e; padding-bottom:4px; margin-bottom:8px; letter-spacing:.06em; }
+  canvas { width:100%; height:auto; display:block; border:2px solid #8a6d3b; border-radius:8px; background:#9db06a; touch-action:none; user-select:none; -webkit-user-select:none; }
+  .row { display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin:6px 0; font-family:"Hiragino Sans","Noto Sans JP",sans-serif; font-size:13.5px; }
+  .row label { flex:0 0 64px; font-weight:bold; }
+  .row input[type=text] { flex:1; padding:6px 8px; border:1px solid #a68d55; border-radius:6px; font-size:14px; background:#fbf4dd; font-family:inherit; }
+  .row input[type=range] { flex:1; accent-color:#b97f1f; }
+  .row .val { flex:0 0 40px; text-align:right; font-weight:bold; color:#8a5a12; }
+  .seg { display:inline-flex; background:#e0d0a4; border:1px solid #a68d55; border-radius:999px; overflow:hidden; }
+  .seg button { border:0; background:transparent; color:#4a3a20; padding:6px 12px; font-size:13px; cursor:pointer; font-family:"Hiragino Sans","Noto Sans JP",sans-serif; }
+  .seg button.on { background:#8a5a12; color:#fff6dd; font-weight:bold; }
+  button.act {
+    background:#6d5322; color:#fff6dd; border:1px solid #4f3c14; border-radius:999px;
+    padding:8px 16px; font-size:14px; cursor:pointer; font-family:"Hiragino Sans","Noto Sans JP",sans-serif;
+  }
+  button.act:active { transform:scale(.96); }
+  button.act.big { background:#a12c1d; border-color:#6f1a0e; font-size:16px; padding:10px 26px; font-weight:bold; letter-spacing:.1em; }
+  button.act.ghost { background:#e0d0a4; color:#4a3a20; border-color:#a68d55; }
+  button.act.small { padding:5px 11px; font-size:12.5px; }
+  .presets button { margin:2px 2px 2px 0; }
+  .barWrap { background:#d9c48f; border-radius:6px; height:14px; overflow:hidden; flex:1; }
+  .barFill { height:100%; transition:width .3s; }
+  .log { max-height:300px; overflow-y:auto; font-family:"Hiragino Sans","Noto Sans JP",sans-serif; font-size:12.8px; line-height:1.55; }
+  .log p { padding:2.5px 2px; border-bottom:1px dotted #c9b078; }
+  .log .t { color:#8a6d3b; font-size:11px; margin-right:5px; }
+  .log .hero { background:#fdf0c0; font-weight:bold; }
+  .log .war { color:#a12c1d; }
+  .log .big { font-weight:bold; font-size:13.5px; }
+  .unit { font-family:"Hiragino Sans","Noto Sans JP",sans-serif; font-size:12.3px; padding:4px 2px; border-bottom:1px dotted #c9b078; line-height:1.45; }
+  .unit .nm { font-weight:bold; font-size:13px; }
+  .unit .tp { font-size:11px; background:#8a6d3b; color:#fff6dd; border-radius:4px; padding:0 5px; margin-left:4px; }
+  .unit .tp.good { background:#2e6b30; } .unit .tp.bad { background:#7a7a7a; } .unit .tp.sly { background:#5b4a9e; } .unit .tp.hot { background:#b3541e; }
+  .unit .st { opacity:.65; text-decoration:line-through; }
+  .unit .stat { opacity:.8; }
+  .sideColor { display:inline-block; width:10px; height:10px; border-radius:2px; margin-right:4px; vertical-align:-1px; }
+  .summary { display:none; }
+  .summary.show { display:block; }
+  .summary .verdict { font-size:20px; font-weight:bold; text-align:center; margin:4px 0; }
+  footer { margin-top:12px; font-size:13px; text-align:center; }
+  footer a { color:#e8cf96; }
+  .note { font-size:11.8px; opacity:.75; font-family:"Hiragino Sans","Noto Sans JP",sans-serif; line-height:1.6; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>合戦<span class="accent">観戦</span></h1>
+  <p class="sub">ランダム生成の戦場で、将たちが勝手に戦うのを眺める観戦ゲーム。主人公の能力と兵数だけ決めたら、あとは歴史 ― ではなく合戦 ― が勝手に進みます。</p>
+
+  <div class="layout">
+    <div class="main">
+      <canvas id="cv" width="920" height="640"></canvas>
+      <div class="row" style="justify-content:center; margin-top:8px;">
+        <div class="seg" id="speedSeg">
+          <button data-v="0">⏸ 停止</button>
+          <button data-v="1" class="on">▶ ×1</button>
+          <button data-v="2">⏩ ×2</button>
+          <button data-v="4">⏭ ×4</button>
+        </div>
+        <button class="act ghost" id="againBtn">🎲 同じ条件でもう一戦</button>
+        <button class="act ghost" id="backBtn">⚙ 設定に戻る</button>
+      </div>
+      <p class="note" style="color:#d8c9a3; text-align:center;">戦場番号 <span id="seedLine">-</span> ／ 部隊をタップすると将の詳細が見られます</p>
+    </div>
+
+    <div class="side">
+      <div class="panel" id="setupPanel">
+        <h2>⚔ 主人公の設定</h2>
+        <div class="row"><label>名前</label><input type="text" id="heroName" value="名和信景" maxlength="8"></div>
+        <div class="row"><label>統率</label><input type="range" id="stLead" min="1" max="100" value="70"><span class="val" id="vLead">70</span></div>
+        <div class="row"><label>武勇</label><input type="range" id="stWar" min="1" max="100" value="70"><span class="val" id="vWar">70</span></div>
+        <div class="row"><label>知略</label><input type="range" id="stInt" min="1" max="100" value="70"><span class="val" id="vInt">70</span></div>
+        <div class="row"><label>兵数</label><input type="range" id="stTroops" min="100" max="5000" step="100" value="1500"><span class="val" id="vTroops">1500</span></div>
+        <div class="row presets">
+          <button class="act ghost small" data-preset="meisho">⭐ 名将</button>
+          <button class="act ghost small" data-preset="sakushi">🦊 策士</button>
+          <button class="act ghost small" data-preset="noukin">🐗 脳筋</button>
+          <button class="act ghost small" data-preset="munou">💤 無能に挑戦</button>
+        </div>
+        <h2 style="margin-top:10px;">🗺 合戦の設定</h2>
+        <div class="row"><label>形式</label>
+          <div class="seg" id="modeSeg"><button data-m="field" class="on">野戦</button><button data-m="siege">攻城戦</button></div>
+        </div>
+        <div class="row" id="roleRow" style="display:none"><label>立場</label>
+          <div class="seg" id="roleSeg"><button data-r="attack" class="on">攻め手</button><button data-r="defend">守り手</button></div>
+        </div>
+        <div class="row"><label>仕掛け</label>
+          <div class="seg" id="gimmickSeg"><button data-g="auto" class="on">おまかせ</button><button data-g="on">あり</button><button data-g="off">なし</button></div>
+          <span class="note">伏兵・援軍</span>
+        </div>
+        <div class="row"><label>敵の強さ</label>
+          <div class="seg" id="diffSeg"><button data-d="0.8">楽勝</button><button data-d="1" class="on">互角</button><button data-d="1.25">強敵</button></div>
+        </div>
+        <div class="row" style="justify-content:center; margin-top:10px;">
+          <button class="act big" id="startBtn">出 陣</button>
+        </div>
+        <p class="note">川は戦場によってあったりなかったり。城攻めでは門を破って本丸を落とせば勝ち、制限時間守り切れば守備側の勝ちです。</p>
+      </div>
+
+      <div class="panel summary" id="summaryPanel">
+        <h2>📜 合戦結果</h2>
+        <p class="verdict" id="verdict"></p>
+        <div id="summaryBody" style="font-family:'Hiragino Sans','Noto Sans JP',sans-serif; font-size:13px; line-height:1.7;"></div>
+      </div>
+
+      <div class="panel">
+        <h2>🏯 戦況</h2>
+        <div class="row"><span><span class="sideColor" style="background:#2456d6"></span>自軍</span><div class="barWrap"><div class="barFill" id="barAlly" style="background:#2456d6; width:100%"></div></div><b id="numAlly">-</b></div>
+        <div class="row"><span><span class="sideColor" style="background:#c22f1d"></span>敵軍</span><div class="barWrap"><div class="barFill" id="barEnemy" style="background:#c22f1d; width:100%"></div></div><b id="numEnemy">-</b></div>
+        <p class="note" id="clockLine">開戦前</p>
+      </div>
+
+      <div class="panel">
+        <h2>🎖 部隊一覧</h2>
+        <div id="unitList"><p class="note">出陣すると両軍の将と能力が表示されます</p></div>
+      </div>
+
+      <div class="panel">
+        <h2>📣 戦況ログ</h2>
+        <div class="log" id="logBox"><p>開戦を待っています…</p></div>
+      </div>
+    </div>
+  </div>
+
+  <footer><a href="https://naway0141-source.github.io/">← てまごりゲーム集にもどる</a></footer>
+</div>
+
+<script>
+'use strict';
+/* ===== 合戦観戦 =====
+   ランダム戦場 × 将の個性AI × リアルタイム自動合戦。
+   ロジック部（生成・シミュレーション）と描画・入力部を分離。 */
+
+// ---------- 共通 ----------
+const COLS = 46, ROWS = 32, TILE = 20;
+const FIELD_W = COLS * TILE, FIELD_H = ROWS * TILE;
+const ENGAGE_R = 30;          // 接敵距離(px)
+const TIME_LIMIT = 480;       // 秒（攻城戦の守備側勝利・野戦の判定）
+
+function mulberry32(a) {
+  return function () {
+    a |= 0; a = a + 0x6D2B79F5 | 0;
+    let t = Math.imul(a ^ a >>> 15, 1 | a);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  };
+}
+const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+const ri = (rng, lo, hi) => lo + Math.floor(rng() * (hi - lo + 1));
+const pick = (rng, arr) => arr[Math.floor(rng() * arr.length)];
+
+// ---------- 将の生成 ----------
+const SURNAMES = ['青木', '黒沢', '早川', '滝沢', '山岡', '小山田', '穴沢', '甘利', '板倉', '長坂', '三好', '蜂屋', '赤井', '今村', '内藤', '真壁', '里村', '風間', '月岡', '氷室', '鮫島', '鷹野', '霧島', '大熊', '片山', '鳥居', '馬場', '工藤', '瀬戸', '榊原'];
+const GIVEN = ['信景', '勝久', '綱家', '昌元', '景隆', '元春', '義重', '忠孝', '直孝', '政孝', '氏規', '晴宗', '隆景', '元長', '信孝', '景勝', '義景', '清宗', '長宗', '秀綱', '兼綱', '景虎', '信房', '昌幸', '義宣', '忠次', '景資', '元忠'];
+const TYPES = {
+  meisho:  { label: '名将', icon: '⭐', cls: 'good' },
+  sakushi: { label: '策士', icon: '🦊', cls: 'sly' },
+  noukin:  { label: '脳筋', icon: '🐗', cls: 'hot' },
+  mosho:   { label: '猛将', icon: '🔥', cls: 'hot' },
+  okubyo:  { label: '臆病', icon: '🐇', cls: 'bad' },
+  munou:   { label: '無能', icon: '💤', cls: 'bad' },
+  bonsho:  { label: '凡将', icon: '😐', cls: '' }
+};
+function classify(s) {
+  const avg = (s.lead + s.war + s.int) / 3;
+  if (avg <= 38) return 'munou';
+  if (s.lead >= 72 && s.war >= 72 && s.int >= 72) return 'meisho';
+  if (s.int >= 75 && s.int - s.war >= 25) return 'sakushi';
+  if (s.war >= 75 && s.int <= 40) return 'noukin';
+  if (s.war >= 78) return 'mosho';
+  if (s.lead <= 35 && avg < 60) return 'okubyo';
+  return 'bonsho';
+}
+function statsFor(type, rng) {
+  const R = (lo, hi) => ri(rng, lo, hi);
+  switch (type) {
+    case 'meisho': return { lead: R(76, 98), war: R(76, 98), int: R(76, 98) };
+    case 'sakushi': return { lead: R(55, 85), war: R(25, 55), int: R(78, 98) };
+    case 'noukin': return { lead: R(35, 65), war: R(78, 98), int: R(8, 35) };
+    case 'mosho': return { lead: R(45, 75), war: R(75, 95), int: R(25, 55) };
+    case 'okubyo': return { lead: R(15, 40), war: R(30, 60), int: R(40, 70) };
+    case 'munou': return { lead: R(8, 38), war: R(8, 38), int: R(8, 38) };
+    default: return { lead: R(42, 68), war: R(42, 68), int: R(42, 68) };
+  }
+}
+const TYPE_WEIGHTS = [['meisho', 6], ['sakushi', 14], ['noukin', 14], ['mosho', 14], ['okubyo', 10], ['munou', 10], ['bonsho', 32]];
+function rollType(rng) {
+  let x = rng() * 100;
+  for (const [t, w] of TYPE_WEIGHTS) { if ((x -= w) < 0) return t; }
+  return 'bonsho';
+}
+function genGeneral(rng, usedNames, forceType) {
+  let name;
+  do { name = pick(rng, SURNAMES) + pick(rng, GIVEN); } while (usedNames.has(name));
+  usedNames.add(name);
+  const type = forceType || rollType(rng);
+  return { name, stats: statsFor(type, rng), type };
+}
+
+// ---------- 地形生成 ----------
+const T = (tiles, x, y) => tiles[y * COLS + x];
+const inB = (x, y) => x >= 0 && y >= 0 && x < COLS && y < ROWS;
+function blankTiles() {
+  const a = [];
+  for (let i = 0; i < COLS * ROWS; i++) a.push({ h: 0, forest: false, water: false, bridge: false, ford: false, wall: false, gate: false, gateHp: 0, keep: false, court: false });
+  return a;
+}
+function genElevation(tiles, rng, hills) {
+  const hs = [];
+  for (let i = 0; i < hills; i++) hs.push({ x: rng() * COLS, y: rng() * ROWS, r: 3.5 + rng() * 5.5, p: 0.7 + rng() * 0.9 });
+  for (let y = 0; y < ROWS; y++) for (let x = 0; x < COLS; x++) {
+    let v = 0;
+    for (const h of hs) { const d2 = (x - h.x) ** 2 + (y - h.y) ** 2; v += h.p * Math.exp(-d2 / (h.r * h.r)); }
+    T(tiles, x, y).h = v > 1.15 ? 2 : v > 0.55 ? 1 : 0;
+  }
+}
+function genRiver(tiles, rng, fixedCol) {
+  // 上辺から下辺へ蛇行する川。fixedCol があればその近傍を通す
+  let c = fixedCol !== undefined ? fixedCol + ri(rng, -1, 1) : ri(rng, 18, 27);
+  const wide = rng() < 0.3 ? ri(rng, 6, 20) : -1;
+  for (let y = 0; y < ROWS; y++) {
+    T(tiles, c, y).water = true;
+    if (y === wide || y === wide + 1) { if (inB(c + 1, y)) T(tiles, c + 1, y).water = true; }
+    if (rng() < 0.42) c = clamp(c + ri(rng, -1, 1), 13, 32);
+  }
+  // 渡河点：橋1〜2、浅瀬0〜1
+  const rows = [];
+  while (rows.length < 3) { const r = ri(rng, 3, ROWS - 4); if (!rows.some(q => Math.abs(q - r) < 5)) rows.push(r); }
+  const kinds = rng() < 0.3 ? ['bridge'] : (rng() < 0.5 ? ['bridge', 'bridge', 'ford'] : ['bridge', 'ford']);
+  kinds.forEach((kind, i) => {
+    const r = rows[i]; if (r === undefined) return;
+    for (let x = 0; x < COLS; x++) {
+      const t = T(tiles, x, r);
+      if (t.water) { t[kind] = true; t.h = 0; }
+    }
+  });
+  for (let i = 0; i < tiles.length; i++) if (tiles[i].water) tiles[i].forest = false;
+}
+function genForests(tiles, rng, clusters) {
+  for (let i = 0; i < clusters; i++) {
+    let x = ri(rng, 2, COLS - 3), y = ri(rng, 2, ROWS - 3);
+    const n = ri(rng, 4, 11);
+    for (let k = 0; k < n; k++) {
+      const t = T(tiles, x, y);
+      if (!t.water && !t.wall) t.forest = true;
+      x = clamp(x + ri(rng, -1, 1), 1, COLS - 2); y = clamp(y + ri(rng, -1, 1), 1, ROWS - 2);
+    }
+  }
+}
+function clearZone(tiles, x0, x1) {
+  for (let y = 0; y < ROWS; y++) for (let x = x0; x <= x1; x++) {
+    const t = T(tiles, x, y);
+    t.water = false; t.bridge = false; t.ford = false; t.forest = false; t.h = Math.min(t.h, 1);
+  }
+}
+function genFieldMap(rng) {
+  const tiles = blankTiles();
+  genElevation(tiles, rng, ri(rng, 5, 8));
+  const river = rng() < 0.55;
+  if (river) genRiver(tiles, rng);
+  genForests(tiles, rng, ri(rng, 6, 10));
+  clearZone(tiles, 0, 4); clearZone(tiles, COLS - 5, COLS - 1);
+  return { tiles, river };
+}
+const CASTLE = { x0: 33, x1: 44, y0: 9, y1: 22, gates: [14, 18], keep: { x: 42, y: 15 } };
+function genSiegeMap(rng) {
+  const tiles = blankTiles();
+  genElevation(tiles, rng, ri(rng, 3, 5));
+  const river = rng() < 0.45;
+  if (river) genRiver(tiles, rng, 29);
+  genForests(tiles, rng, ri(rng, 4, 7));
+  const C = CASTLE;
+  for (let y = C.y0; y <= C.y1; y++) for (let x = C.x0; x <= C.x1; x++) {
+    const t = T(tiles, x, y);
+    t.water = false; t.bridge = false; t.ford = false; t.forest = false;
+    t.h = (x >= 40 && y >= 13 && y <= 18) ? 2 : 1;
+    t.court = true;
+    if (x === C.x0 || x === C.x1 || y === C.y0 || y === C.y1) t.wall = true;
+  }
+  for (const gy of C.gates) {
+    const t = T(tiles, C.x0, gy);
+    t.wall = false; t.gate = true; t.gateHp = 700;
+  }
+  const k = T(tiles, C.keep.x, C.keep.y);
+  k.keep = true;
+  clearZone(tiles, 0, 4);
+  return { tiles, river };
+}
+
+// ---------- 経路探索（ダイクストラ） ----------
+function passable(t) { return (!t.water || t.bridge || t.ford) && !t.wall && (!t.gate || t.gateHp <= 0); }
+function enterCost(from, to) {
+  let c = 1;
+  if (to.water && to.ford) c = 3.0; else if (to.water && to.bridge) c = 1.1;
+  if (to.forest) c = Math.max(c, 1.7);
+  c += Math.max(0, to.h - from.h) * 0.8;
+  return c;
+}
+function findPath(tiles, sx, sy, tx, ty) {
+  if (!inB(tx, ty) || !passable(T(tiles, tx, ty))) {
+    let best = null, bd = 1e9;
+    for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) {
+      const nx = tx + dx, ny = ty + dy;
+      if (inB(nx, ny) && passable(T(tiles, nx, ny))) { const d = dx * dx + dy * dy; if (d < bd) { bd = d; best = { x: nx, y: ny }; } }
+    }
+    if (!best) return [];
+    tx = best.x; ty = best.y;
+  }
+  const N = COLS * ROWS, dist = new Float64Array(N).fill(Infinity), prev = new Int32Array(N).fill(-1);
+  const s = sy * COLS + sx, g = ty * COLS + tx;
+  dist[s] = 0;
+  const heap = [[0, s]];
+  const hpush = (d, i) => { heap.push([d, i]); let c = heap.length - 1; while (c > 0) { const p = (c - 1) >> 1; if (heap[p][0] <= heap[c][0]) break; const tmp = heap[p]; heap[p] = heap[c]; heap[c] = tmp; c = p; } };
+  const hpop = () => { const top = heap[0], last = heap.pop(); if (heap.length) { heap[0] = last; let c = 0; for (;;) { const l = 2 * c + 1, r = l + 1; let m = c; if (l < heap.length && heap[l][0] < heap[m][0]) m = l; if (r < heap.length && heap[r][0] < heap[m][0]) m = r; if (m === c) break; const tmp = heap[m]; heap[m] = heap[c]; heap[c] = tmp; c = m; } } return top; };
+  while (heap.length) {
+    const [d, cur] = hpop();
+    if (cur === g) break;
+    if (d > dist[cur]) continue;
+    const cx = cur % COLS, cy = (cur / COLS) | 0;
+    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      const nx = cx + dx, ny = cy + dy;
+      if (!inB(nx, ny)) continue;
+      const nt = T(tiles, nx, ny);
+      if (!passable(nt)) continue;
+      const nd = d + enterCost(T(tiles, cx, cy), nt);
+      const ni = ny * COLS + nx;
+      if (nd < dist[ni]) { dist[ni] = nd; prev[ni] = cur; hpush(nd, ni); }
+    }
+  }
+  if (dist[g] === Infinity) return [];
+  const path = [];
+  let cur = g;
+  while (cur !== -1) { path.push({ x: cur % COLS, y: (cur / COLS) | 0 }); cur = prev[cur]; }
+  path.reverse();
+  // 直線状の中間点を間引く
+  const simp = path.filter((p, i) => {
+    if (i === 0 || i === path.length - 1) return true;
+    const a = path[i - 1], b = path[i + 1];
+    return !(a.x === p.x && p.x === b.x) && !(a.y === p.y && p.y === b.y);
+  });
+  return simp.map(p => ({ x: p.x * TILE + TILE / 2, y: p.y * TILE + TILE / 2 }));
+}
+
+// ---------- 合戦の生成 ----------
+let UNIT_SEQ = 1;
+function makeUnit(side, gen, troops, x, y, opts) {
+  opts = opts || {};
+  return {
+    id: UNIT_SEQ++, side, name: gen.name, stats: gen.stats, type: gen.type,
+    troops, initTroops: troops, morale: 72 + gen.stats.lead * 0.25,
+    x, y, path: [], target: null, state: opts.state || 'active',
+    hq: !!opts.hq, hero: !!opts.hero, anchor: opts.anchor || null,
+    decideT: Math.random() * 0.5, dmgDealt: 0, kills: 0, lastFrom: null,
+    recentDmg: 0, surpriseT: 0, engaged: false, dead: false, generalFate: null
+  };
+}
+function sideTotals(units, side) {
+  return units.filter(u => u.side === side && u.state !== 'dead' && u.state !== 'gone').reduce((s, u) => s + Math.max(0, u.troops), 0);
+}
+function ev(st, text, cls) { st.events.push({ t: st.t, text, cls: cls || '' }); }
+
+function createBattle(cfg) {
+  const rng = mulberry32(cfg.seed);
+  const mode = cfg.mode;
+  const map = mode === 'siege' ? genSiegeMap(rng) : genFieldMap(rng);
+  const tiles = map.tiles;
+  const used = new Set([cfg.hero.name]);
+  const units = [];
+  const allyIsAttacker = mode === 'field' || cfg.role === 'attack';
+
+  const mkGen = isHQ => {
+    const g = genGeneral(rng, used);
+    if (isHQ) { // 総大将はそこそこ有能に
+      const avg = (g.stats.lead + g.stats.war + g.stats.int) / 3;
+      if (avg < 55) { g.stats.lead = Math.min(95, g.stats.lead + 14); g.stats.war = Math.min(95, g.stats.war + 14); g.stats.int = Math.min(95, g.stats.int + 14); g.type = classify(g.stats); }
+    }
+    return g;
+  };
+  // 兵数バランス：敵の一般部隊総数を決め、自軍一般部隊を合わせる
+  const enemyBase = [ri(rng, 900, 2100), ri(rng, 900, 2100), ri(rng, 900, 2100)];
+  const enemySum = enemyBase.reduce((a, b) => a + b, 0);
+  const allyBase = enemyBase.map(v => Math.round(v * (0.9 + rng() * 0.25)));
+  const dScale = cfg.diff;
+  const rowsField = [5, 11, 16, 21, 27];
+  const px = (tx, ty) => ({ x: tx * TILE + TILE / 2, y: ty * TILE + TILE / 2 });
+
+  if (mode === 'field') {
+    const aPos = rowsField.map(r => px(ri(rng, 2, 4), r + ri(rng, -1, 1)));
+    const ePos = rowsField.map(r => px(ri(rng, COLS - 5, COLS - 3), r + ri(rng, -1, 1)));
+    units.push(makeUnit('ally', mkGen(true), ri(rng, 1300, 1800), aPos[0].x, aPos[0].y, { hq: true, anchor: aPos[0] }));
+    units.push(makeUnit('ally', { name: cfg.hero.name, stats: cfg.hero.stats, type: classify(cfg.hero.stats) }, cfg.hero.troops, aPos[2].x, aPos[2].y, { hero: true }));
+    [1, 3, 4].forEach((pi, i) => units.push(makeUnit('ally', mkGen(false), allyBase[i], aPos[pi].x, aPos[pi].y, {})));
+    units.push(makeUnit('enemy', mkGen(true), Math.round(ri(rng, 1300, 1800) * dScale), ePos[0].x, ePos[0].y, { hq: true, anchor: ePos[0] }));
+    [1, 2, 3, 4].forEach((pi, i) => units.push(makeUnit('enemy', mkGen(false), Math.round((i === 2 ? ri(rng, 900, 2100) : enemyBase[i > 2 ? 2 : i]) * dScale), ePos[pi].x, ePos[pi].y, {})));
+  } else {
+    const C = CASTLE;
+    const atkRows = [6, 12, 17, 23, 27];
+    const atkPos = atkRows.map(r => px(ri(rng, 1, 4), r));
+    const defPos = [px(C.keep.x - 1, C.keep.y), px(C.x0 + 1, C.gates[0]), px(C.x0 + 2, 11), px(C.x0 + 2, 20), px(39, C.keep.y)];
+    const atkSide = allyIsAttacker ? 'ally' : 'enemy';
+    const defSide = allyIsAttacker ? 'enemy' : 'ally';
+    const heroAtk = allyIsAttacker;
+    units.push(makeUnit(atkSide, mkGen(true), ri(rng, 1300, 1800), atkPos[0].x, atkPos[0].y, { hq: true, anchor: atkPos[0] }));
+    if (heroAtk) units.push(makeUnit('ally', { name: cfg.hero.name, stats: cfg.hero.stats, type: classify(cfg.hero.stats) }, cfg.hero.troops, atkPos[2].x, atkPos[2].y, { hero: true }));
+    [1, 2, 3, 4].forEach((pi, i) => {
+      if (heroAtk && pi === 2) return;
+      // 攻め手は城の利に挑むぶん兵を厚くする（×1.3）
+      const tr = Math.round(allyBase[i % 3] * 1.05 * (atkSide === 'enemy' ? dScale : 1));
+      units.push(makeUnit(atkSide, mkGen(false), tr, atkPos[pi].x, atkPos[pi].y, {}));
+    });
+
+    units.push(makeUnit(defSide, mkGen(true), ri(rng, 1200, 1700), defPos[0].x, defPos[0].y, { hq: true, anchor: defPos[0] }));
+    if (!heroAtk) units.push(makeUnit('ally', { name: cfg.hero.name, stats: cfg.hero.stats, type: classify(cfg.hero.stats) }, cfg.hero.troops, defPos[1].x, defPos[1].y, { hero: true, anchor: defPos[1] }));
+    [2, 3, 4].forEach((pi, i) => {
+      const tr = Math.round((defSide === 'enemy' ? enemyBase[i % 3] * dScale : enemyBase[i % 3]) * 1.1);
+      units.push(makeUnit(defSide, mkGen(false), tr, defPos[pi].x, defPos[pi].y, { anchor: defPos[pi] }));
+    });
+    if (heroAtk) units.push(makeUnit('enemy', mkGen(false), Math.round(ri(rng, 900, 1800) * dScale * 1.1), defPos[4].x, defPos[4].y, { anchor: defPos[4] }));
+  }
+
+  const st = {
+    seed: cfg.seed, mode, tiles, river: map.river, units, t: 0, over: false, winner: null,
+    events: [], cfg, atkSide: mode === 'siege' ? (allyIsAttacker ? 'ally' : 'enemy') : null, captureT: 0, keep: mode === 'siege' ? { x: CASTLE.keep.x * TILE + TILE / 2, y: CASTLE.keep.y * TILE + TILE / 2 } : null,
+    initTotals: { ally: sideTotals(units, 'ally'), enemy: sideTotals(units, 'enemy') },
+    reinf: { ally: { pending: false, done: false }, enemy: { pending: false, done: false } },
+    rng
+  };
+  // 伏兵（おまかせ=50%、あり=確定。森が中盤にない場合は不成立）
+  const gim = cfg.gimmick;
+  const wantAmbush = gim === 'on' || (gim === 'auto' && rng() < 0.5);
+  if (wantAmbush) {
+    const side = rng() < 0.5 ? 'ally' : 'enemy';
+    const cand = units.filter(u => u.side === side && !u.hq && !u.hero);
+    const forests = [];
+    for (let y = 3; y < ROWS - 3; y++) for (let x = 12; x < COLS - 12; x++) if (T(tiles, x, y).forest) forests.push({ x, y });
+    if (cand.length && forests.length >= 3) {
+      const u = cand[ri(rng, 0, cand.length - 1)];
+      const f = forests[ri(rng, 0, forests.length - 1)];
+      u.x = f.x * TILE + TILE / 2; u.y = f.y * TILE + TILE / 2;
+      u.state = 'hidden'; u.anchor = { x: u.x, y: u.y };
+      st.ambushSide = side;
+    }
+  }
+  // 援軍（おまかせ=各軍50%、あり=両軍確定）
+  for (const side of ['ally', 'enemy']) {
+    st.reinf[side].pending = gim === 'on' || (gim === 'auto' && rng() < 0.5);
+  }
+  ev(st, mode === 'siege' ? '攻城戦、開戦！' : '野戦、開戦！', 'big');
+  if (map.river) ev(st, '戦場には川が流れている', '');
+  return st;
+}
+
+// ---------- シミュレーション ----------
+const tileOfPx = (x, y) => ({ x: clamp(Math.floor(x / TILE), 0, COLS - 1), y: clamp(Math.floor(y / TILE), 0, ROWS - 1) });
+const tileAtPx = (st, x, y) => { const t = tileOfPx(x, y); return T(st.tiles, t.x, t.y); };
+const alive = u => u.state !== 'dead' && u.state !== 'gone';
+const DMG_K = 0.5;
+
+function setGoal(st, u, goal) {
+  u.goal = goal;
+  const gt = goal.kind === 'unit' ? tileOfPx(goal.u.x, goal.u.y)
+    : goal.kind === 'point' ? tileOfPx(goal.x, goal.y)
+    : goal.kind === 'gate' ? { x: goal.tx, y: goal.ty } : null;
+  if (!gt) { u.path = []; u.goalTile = null; return; }
+  // 目的タイルが同じなら再探索を抑制（経路が残っている／到達不能と分かった直後）
+  if (u.goalTile && u.goalTile.x === gt.x && u.goalTile.y === gt.y) {
+    if (u.path && u.path.length) return;
+    if (st.t - (u.lastRepathT || -9) < 0.8) return;
+  }
+  u.goalTile = gt; u.lastRepathT = st.t;
+  const ut = tileOfPx(u.x, u.y);
+  u.path = findPath(st.tiles, ut.x, ut.y, gt.x, gt.y);
+}
+function scoreTarget(st, u, e) {
+  const d = Math.hypot(e.x - u.x, e.y - u.y);
+  const routPenalty = e.state === 'rout' ? (u.type === 'noukin' ? -150 : -500) : 0;
+  switch (u.type) {
+    case 'noukin': return -d + routPenalty;
+    case 'mosho': return -d + (e.hq ? 60 : 0) + routPenalty;
+    case 'sakushi': case 'meisho': {
+      let s = -d * 0.55 + (1 - e.troops / 2600) * 320 - Math.max(0, e.troops - u.troops) * 0.12;
+      if (st.units.some(a => a.side === u.side && a !== u && alive(a) && a.goal && a.goal.kind === 'unit' && a.goal.u === e)) s += 130;
+      return s + routPenalty;
+    }
+    case 'munou': return st.rng() * 100 + routPenalty;
+    case 'okubyo': return -d * 0.7 + (1 - e.troops / 2600) * 180 + routPenalty;
+    default: return -d * 0.8 + (1 - e.troops / 2600) * 120 + routPenalty;
+  }
+}
+function decide(st, u) {
+  const foes = st.units.filter(e => e.side !== u.side && alive(e) && e.state !== 'hidden');
+  const allies = st.units.filter(a => a.side === u.side && alive(a));
+  const hq = allies.find(a => a.hq);
+  if (u.state === 'rout') { setGoal(st, u, { kind: 'point', x: u.side === 'ally' ? 4 : FIELD_W - 4, y: u.y }); return; }
+  const inSiege = st.mode === 'siege';
+  const isAttacker = inSiege && st.atkSide === u.side;
+  const isDefender = inSiege && st.atkSide !== u.side;
+
+  if (u.hq) {
+    if (st.t > 300 && foes.length) { // 終盤は総大将も進軍する
+      const tgt = foes.sort((a, b) => scoreTarget(st, u, b) - scoreTarget(st, u, a))[0];
+      setGoal(st, u, { kind: 'unit', u: tgt });
+      return;
+    }
+    const near = foes.filter(e => Math.hypot(e.x - u.x, e.y - u.y) < 70).sort((a, b) => Math.hypot(a.x - u.x, a.y - u.y) - Math.hypot(b.x - u.x, b.y - u.y))[0];
+    const foesClose = foes.filter(e => Math.hypot(e.x - u.x, e.y - u.y) < 95).length;
+    const alliesClose = allies.filter(a => a !== u && Math.hypot(a.x - u.x, a.y - u.y) < 95).length;
+    if (near && foesClose <= alliesClose + 1) setGoal(st, u, { kind: 'unit', u: near });
+    else if (u.anchor) setGoal(st, u, { kind: 'point', x: u.anchor.x, y: u.anchor.y });
+    return;
+  }
+  if (isDefender) {
+    const intruders = foes.filter(e => { const t = tileAtPx(st, e.x, e.y); return t.court; });
+    if (intruders.length) { // 城内に敵が入ったら全員で迎撃する
+      const tgt = intruders.sort((a, b) => scoreTarget(st, u, b) - scoreTarget(st, u, a))[0];
+      setGoal(st, u, { kind: 'unit', u: tgt });
+      return;
+    }
+    const near = foes.filter(e => Math.hypot(e.x - u.x, e.y - u.y) < 120);
+    const tgt = near.sort((a, b) => scoreTarget(st, u, b) - scoreTarget(st, u, a))[0];
+    if (tgt) setGoal(st, u, { kind: 'unit', u: tgt });
+    else if (u.anchor) setGoal(st, u, { kind: 'point', x: u.anchor.x, y: u.anchor.y });
+    return;
+  }
+  if (isAttacker) {
+    const gates = [];
+    st.tiles.forEach((t, i) => { if (t.gate && t.gateHp > 0) gates.push({ tx: i % COLS, ty: (i / COLS) | 0, t }); });
+    // 門が閉じている間は、城内の敵は壁越しで届かないので無視して門を狙う
+    const near = foes.filter(e => Math.hypot(e.x - u.x, e.y - u.y) < 88 && !(gates.length && tileAtPx(st, e.x, e.y).court)).sort((a, b) => scoreTarget(st, u, b) - scoreTarget(st, u, a))[0];
+    if (near && !(u.type === 'sakushi' && near.troops > u.troops * 1.5)) { setGoal(st, u, { kind: 'unit', u: near }); return; }
+    if (gates.length) {
+      const g = gates.sort((a, b) => Math.hypot(a.tx * TILE - u.x, a.ty * TILE - u.y) - Math.hypot(b.tx * TILE - u.x, b.ty * TILE - u.y))[0];
+      setGoal(st, u, { kind: 'gate', tx: g.tx, ty: g.ty, tile: g.t });
+    } else if (st.keep) {
+      // 守備隊が多く残っているうちは本丸に突っ込まず、まず野戦で削る
+      const defAlive = foes.filter(e => alive(e)).length;
+      if (defAlive >= 3) {
+        const tgt = foes.sort((a, b) => scoreTarget(st, u, b) - scoreTarget(st, u, a))[0];
+        if (tgt) setGoal(st, u, { kind: 'unit', u: tgt });
+      } else setGoal(st, u, { kind: 'point', x: st.keep.x, y: st.keep.y });
+    }
+    return;
+  }
+  // 野戦
+  if ((u.type === 'sakushi' || u.type === 'okubyo') && u.morale < 48 && hq) {
+    const stronger = foes.some(e => e.troops > u.troops * 1.15 && Math.hypot(e.x - u.x, e.y - u.y) < 150);
+    if (stronger) { setGoal(st, u, { kind: 'point', x: hq.x, y: hq.y }); return; }
+  }
+  const tgt = foes.sort((a, b) => scoreTarget(st, u, b) - scoreTarget(st, u, a))[0];
+  if (tgt) setGoal(st, u, { kind: 'unit', u: tgt });
+}
+function routThreshold(u) {
+  let rt = clamp(36 - u.stats.lead * 0.22, 10, 34);
+  if (u.type === 'okubyo') rt += 8;
+  if (u.type === 'noukin') rt -= 8;
+  if (u.hq) rt = clamp(rt - 6, 6, 34);
+  return rt;
+}
+function startRout(st, u) {
+  u.state = 'rout'; u.path = [];
+  ev(st, (u.hero ? '💛 ' : '') + u.name + '隊、士気が崩れて潰走！', u.hero ? 'hero war' : 'war');
+  for (const a of st.units) if (a.side === u.side && a !== u && alive(a) && Math.hypot(a.x - u.x, a.y - u.y) < 130) a.morale -= 6;
+}
+function destroyUnit(st, u) {
+  u.state = 'dead'; u.troops = 0;
+  const killer = u.lastFrom;
+  if (killer && alive(killer)) { killer.kills++; killer.morale = Math.min(100, killer.morale + 6); }
+  const fate = st.rng();
+  u.generalFate = (u.hero ? fate < 0.5 : fate < 0.45) ? '戦死' : '逃亡';
+  ev(st, '⚔ ' + u.name + '隊、壊滅！ ' + u.name + 'は' + (u.generalFate === '戦死' ? '討ち死に' : '戦場から逃れた') + (killer ? '（討ち取ったのは ' + killer.name + '隊）' : ''), (u.hero || (killer && killer.hero)) ? 'hero war big' : 'war big');
+  for (const a of st.units) if (a.side === u.side && a !== u && alive(a)) a.morale -= 9;
+}
+function spawnReinforcement(st, side) {
+  const used = new Set(st.units.map(u => u.name));
+  const g = genGeneral(st.rng, used);
+  const x = side === 'ally' ? TILE : FIELD_W - TILE;
+  const y = (ri(st.rng, 8, ROWS - 9)) * TILE;
+  const u = makeUnit(side, g, ri(st.rng, 1000, 1600), x, y, {});
+  st.units.push(u);
+  ev(st, '📯 ' + (side === 'ally' ? '自軍' : '敵軍') + 'に援軍到着！ ' + g.name + '隊 ' + u.troops + '騎', 'big');
+}
+function checkReinforcements(st) {
+  for (const side of ['ally', 'enemy']) {
+    const r = st.reinf[side];
+    if (!r.pending || r.done) continue;
+    const mine = sideTotals(st.units, side), foe = sideTotals(st.units, side === 'ally' ? 'enemy' : 'ally');
+    if ((mine < foe * 0.62 && st.t > 40) || st.t > 210) { r.done = true; spawnReinforcement(st, side); }
+  }
+}
+function checkAmbush(st) {
+  for (const u of st.units) {
+    if (u.state !== 'hidden') continue;
+    const nearFoe = st.units.some(e => e.side !== u.side && alive(e) && Math.hypot(e.x - u.x, e.y - u.y) < 95);
+    const losing = sideTotals(st.units, u.side) < sideTotals(st.units, u.side === 'ally' ? 'enemy' : 'ally') * 0.45;
+    if (nearFoe || losing) {
+      u.state = 'active'; u.surpriseT = 4;
+      ev(st, '🌲 伏兵！ ' + u.name + '隊が姿を現した！', u.hero ? 'hero big' : 'big');
+    }
+  }
+}
+function stepBattle(st, dt) {
+  if (st.over) return;
+  st.t += dt;
+  checkReinforcements(st);
+  checkAmbush(st);
+  const units = st.units;
+
+  // 判断
+  for (const u of units) {
+    if (!alive(u) || u.state === 'hidden') continue;
+    u.decideT -= dt;
+    const interval = u.type === 'munou' ? 1.6 : (u.type === 'meisho' || u.type === 'sakushi') ? 0.45 : 0.7;
+    if (u.decideT <= 0) { u.decideT = interval; decide(st, u); }
+    if (u.goal && u.goal.kind === 'unit' && !alive(u.goal.u)) decide(st, u);
+  }
+  // 接敵判定
+  for (const u of units) u.engaged = false;
+  const pairs = [];
+  for (let i = 0; i < units.length; i++) for (let j = i + 1; j < units.length; j++) {
+    const A = units[i], B = units[j];
+    if (A.side === B.side || !alive(A) || !alive(B) || A.state === 'hidden' || B.state === 'hidden') continue;
+    if (Math.hypot(A.x - B.x, A.y - B.y) < ENGAGE_R) { A.engaged = B.engaged = true; pairs.push([A, B]); }
+  }
+  // 移動
+  for (const u of units) {
+    if (!alive(u) || u.state === 'hidden' || u.engaged) continue;
+    if (!u.path || !u.path.length) {
+      if (u.goal && u.goal.kind === 'unit' && alive(u.goal.u)) setGoal(st, u, u.goal);
+      else continue;
+    }
+    if (!u.path || !u.path.length) continue; // 到達不能な目標（城壁越し等）では静止
+    const wp = u.path[0];
+    const dx = wp.x - u.x, dy = wp.y - u.y, d = Math.hypot(dx, dy);
+    const tt = tileAtPx(st, u.x, u.y);
+    const tf = (tt.water && tt.ford) ? 0.45 : tt.forest ? 0.72 : 1;
+    let sp = 17 * (0.85 + u.stats.lead / 400) * tf * (u.state === 'rout' ? 1.3 : 1);
+    const step = Math.min(d, sp * dt);
+    if (d > 0.01) { u.x += dx / d * step; u.y += dy / d * step; }
+    if (d < 5) u.path.shift();
+  }
+  // 部隊同士の重なり回避
+  for (let i = 0; i < units.length; i++) for (let j = i + 1; j < units.length; j++) {
+    const A = units[i], B = units[j];
+    if (!alive(A) || !alive(B) || A.state === 'hidden' || B.state === 'hidden') continue;
+    const dx = B.x - A.x, dy = B.y - A.y, d = Math.hypot(dx, dy);
+    if (d < 17 && d > 0.01) { const p = (17 - d) / 2; A.x -= dx / d * p; A.y -= dy / d * p; B.x += dx / d * p; B.y += dy / d * p; }
+  }
+  // 戦闘ダメージ
+  const dmg = new Map();
+  const hurt = (A, B, base) => {
+    const hA = tileAtPx(st, A.x, A.y).h, hB = tileAtPx(st, B.x, B.y).h;
+    let rate = DMG_K * (A.stats.war / 50) * Math.sqrt(Math.max(A.troops, 1)) * base;
+    if (hA > hB) rate *= 1 + 0.2 * (hA - hB);
+    const tB = tileAtPx(st, B.x, B.y);
+    if (tB.forest) rate *= 0.72;
+    if (tB.court) rate *= 0.9;
+    if (B.hq) { // 総大将は親衛隊に守られ固い（周りに味方が多いほど固い）
+      rate *= 0.55;
+      const guards = st.units.filter(a => a.side === B.side && a !== B && alive(a) && Math.hypot(a.x - B.x, a.y - B.y) < 62).length;
+      if (guards >= 2) rate *= 0.6;
+    }
+    if (A.surpriseT > 0) rate *= 1.6;
+    if (B.state === 'rout') rate *= 1.3;
+    const d = rate * dt;
+    dmg.set(B, (dmg.get(B) || 0) + d);
+    B.lastFrom = A; A.dmgDealt += d;
+  };
+  for (const [A, B] of pairs) { hurt(A, B, 1); hurt(B, A, 1); }
+  // 城門への攻撃
+  if (st.mode === 'siege') {
+    for (const u of units) {
+      if (!alive(u) || u.state === 'hidden' || st.atkSide !== u.side) continue;
+      if (!u.goal || u.goal.kind !== 'gate') continue;
+      const g = u.goal, gx = g.tx * TILE + TILE / 2, gy = g.ty * TILE + TILE / 2;
+      if (Math.hypot(u.x - gx, u.y - gy) < 38 && g.tile.gateHp > 0) {
+        g.tile.gateHp -= 0.45 * (u.stats.war / 50) * Math.sqrt(Math.max(u.troops, 1)) * dt;
+        if (g.tile.gateHp <= 0) { g.tile.gateHp = 0; ev(st, '💥 城門が破られた！', 'big war'); for (const a of units) if (alive(a)) a.decideT = 0; }
+      }
+    }
+  }
+  // 攻城戦：城壁に取りついた攻め手は、城内からの射撃を受ける
+  if (st.mode === 'siege') {
+    const defSide = st.atkSide === 'ally' ? 'enemy' : 'ally';
+    if (units.some(u => u.side === defSide && alive(u))) {
+      for (const u of units) {
+        if (!alive(u) || u.side !== st.atkSide || u.state === 'hidden') continue;
+        if (tileAtPx(st, u.x, u.y).court) continue;
+        const ut = tileOfPx(u.x, u.y);
+        let nearWall = false;
+        for (let dy = -1; dy <= 1 && !nearWall; dy++) for (let dx = -1; dx <= 1; dx++) {
+          const nx = ut.x + dx, ny = ut.y + dy;
+          if (inB(nx, ny) && (T(st.tiles, nx, ny).wall || T(st.tiles, nx, ny).gate)) { nearWall = true; break; }
+        }
+        if (nearWall) { const d = 3.2 * dt; u.troops -= d; u.recentDmg += d; }
+      }
+    }
+  }
+  for (const [u, d] of dmg) { u.troops -= d; u.recentDmg += d; }
+  // 士気
+  for (const u of units) {
+    if (!alive(u) || u.state === 'hidden') continue;
+    u.surpriseT = Math.max(0, u.surpriseT - dt);
+    u.recentDmg *= Math.exp(-dt / 5);
+    u.morale -= (dmg.get(u) || 0) / u.initTroops * 260;
+    if (!u.engaged && u.state === 'active') u.morale = Math.min(55 + u.stats.lead * 0.45, u.morale + 1.4 * dt);
+    u.morale = clamp(u.morale, 0, 100);
+    if (u.troops <= 0 && u.state !== 'rout') destroyUnit(st, u);
+    else if (u.state === 'active' && u.morale <= routThreshold(u)) startRout(st, u);
+    else if (u.state === 'rout') {
+      const edgeX = u.side === 'ally' ? 4 : FIELD_W - 4;
+      if (Math.abs(u.x - edgeX) < 16) { u.state = 'gone'; ev(st, u.name + '隊、戦場を去った', ''); }
+      else if (u.troops <= 0) destroyUnit(st, u);
+    }
+  }
+  // 勝敗判定
+  const hqA = units.find(u => u.side === 'ally' && u.hq), hqE = units.find(u => u.side === 'enemy' && u.hq);
+  const endWith = (winner, reason) => { st.over = true; st.winner = winner; st.endReason = reason; ev(st, '🏁 ' + reason, 'big'); };
+  if (!alive(hqA) && !alive(hqE)) endWith(sideTotals(units, 'ally') >= sideTotals(units, 'enemy') ? 'ally' : 'enemy', '両軍の総大将が倒れ、兵力で勝る軍の勝利');
+  else if (!alive(hqA)) endWith('enemy', '自軍総大将 ' + hqA.name + ' が倒れた');
+  else if (!alive(hqE)) endWith('ally', '敵総大将 ' + hqE.name + ' を討ち取った！');
+  if (!st.over) {
+    const aAlive = units.some(u => u.side === 'ally' && alive(u) && u.state !== 'hidden');
+    const eAlive = units.some(u => u.side === 'enemy' && alive(u) && u.state !== 'hidden');
+    if (!aAlive) endWith('enemy', '自軍は全ての部隊を失った');
+    else if (!eAlive) endWith('ally', '敵軍は全ての部隊を失った');
+  }
+  if (!st.over && st.mode === 'siege' && st.keep) {
+    const atk = st.atkSide, def = atk === 'ally' ? 'enemy' : 'ally';
+    const onKeep = units.some(u => u.side === atk && alive(u) && Math.hypot(u.x - st.keep.x, u.y - st.keep.y) < 30);
+    const defNear = units.some(u => u.side === def && alive(u) && Math.hypot(u.x - st.keep.x, u.y - st.keep.y) < 44);
+    st.captureT = (onKeep && !defNear) ? st.captureT + dt : Math.max(0, st.captureT - dt * 2);
+    if (st.captureT >= 5) endWith(atk, '本丸が陥落！');
+  }
+  if (!st.over && st.t >= TIME_LIMIT) {
+    if (st.mode === 'siege') endWith(st.atkSide === 'ally' ? 'enemy' : 'ally', '日没 ― 守備側が守り切った');
+    else {
+      const ra = sideTotals(units, 'ally') / st.initTotals.ally, re = sideTotals(units, 'enemy') / st.initTotals.enemy;
+      endWith(ra === re ? 'draw' : ra > re ? 'ally' : 'enemy', '日没により判定 ― 残存兵力で ' + (ra === re ? '互角' : ra > re ? '自軍' : '敵軍') + ' の勝ち');
+    }
+  }
+}
+
+// ---------- 描画・入力部（ブラウザのみ） ----------
+if (typeof document !== 'undefined' && document.getElementById('cv')) {
+  const cv = document.getElementById('cv'), ctx = cv.getContext('2d');
+  const $ = id => document.getElementById(id);
+  let battle = null, previewTiles = genFieldMap(mulberry32(7)).tiles;
+  let speed = 1, selectedId = null, listTimer = 0;
+  const cfgNow = { mode: 'field', role: 'attack', gimmick: 'auto', diff: 1 };
+
+  function fmtTime(t) { const m = Math.floor(t / 60), s = Math.floor(t % 60); return m + '分' + String(s).padStart(2, '0') + '秒'; }
+  function drawTiles(tiles) {
+    for (let y = 0; y < ROWS; y++) for (let x = 0; x < COLS; x++) {
+      const t = T(tiles, x, y), px = x * TILE, py = y * TILE;
+      ctx.fillStyle = t.h === 2 ? '#8aa657' : t.h === 1 ? '#9cb56b' : '#adc37c';
+      ctx.fillRect(px, py, TILE, TILE);
+      if (t.court) { ctx.fillStyle = '#cbb98a'; ctx.fillRect(px, py, TILE, TILE); }
+      if (t.water) {
+        ctx.fillStyle = t.ford ? '#93bcd4' : '#6fa3c8';
+        ctx.fillRect(px, py, TILE, TILE);
+        if (t.bridge) { ctx.fillStyle = '#9a6b3f'; ctx.fillRect(px, py + 3, TILE, TILE - 6); ctx.fillStyle = '#7d5527'; ctx.fillRect(px, py + 8, TILE, 2); }
+        else if (t.ford) { ctx.fillStyle = '#7d9db3'; ctx.fillRect(px + 3, py + 5, 4, 3); ctx.fillRect(px + 12, py + 12, 5, 3); }
+      }
+      if (t.forest) {
+        ctx.fillStyle = '#3f7031';
+        ctx.beginPath(); ctx.arc(px + 7, py + 12, 5.5, 0, 6.29); ctx.arc(px + 14, py + 9, 4.5, 0, 6.29); ctx.fill();
+      }
+      if (t.wall) {
+        ctx.fillStyle = '#8d8578'; ctx.fillRect(px, py, TILE, TILE);
+        ctx.strokeStyle = '#5f594e'; ctx.strokeRect(px + 0.5, py + 0.5, TILE - 1, TILE - 1);
+      }
+      if (t.gate) {
+        ctx.fillStyle = t.gateHp <= 0 ? '#b8a888' : '#7a4a21';
+        ctx.fillRect(px, py, TILE, TILE);
+        ctx.fillStyle = '#5d3714'; ctx.fillRect(px + 3, py, 2, TILE); ctx.fillRect(px + 15, py, 2, TILE);
+        if (t.gateHp > 0) { ctx.fillStyle = '#ffd76a'; ctx.font = '9px sans-serif'; ctx.textAlign = 'center'; ctx.fillText('門', px + 10, py + 13); }
+      }
+      if (t.keep) {
+        ctx.fillStyle = '#e8e2d2'; ctx.fillRect(px - 4, py - 2, TILE + 8, TILE + 4);
+        ctx.fillStyle = '#3c4654'; ctx.beginPath(); ctx.moveTo(px - 6, py - 2); ctx.lineTo(px + 10, py - 12); ctx.lineTo(px + 26, py - 2); ctx.closePath(); ctx.fill();
+      }
+    }
+    ctx.strokeStyle = 'rgba(60,50,20,.08)';
+    for (let x = 0; x <= COLS; x++) { ctx.beginPath(); ctx.moveTo(x * TILE, 0); ctx.lineTo(x * TILE, FIELD_H); ctx.stroke(); }
+  }
+  function drawUnit(u, now) {
+    if (!alive(u) && u.state !== 'hidden') return;
+    const hidden = u.state === 'hidden';
+    ctx.save();
+    if (hidden) ctx.globalAlpha = 0.45;
+    if (u.state === 'rout') ctx.globalAlpha = 0.75;
+    const col = u.side === 'ally' ? '#2456d6' : '#c22f1d';
+    if (selectedId === u.id) { ctx.strokeStyle = '#ffd76a'; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(u.x, u.y, 16, 0, 6.29); ctx.stroke(); }
+    ctx.fillStyle = col;
+    ctx.beginPath(); ctx.arc(u.x, u.y, 11, 0, 6.29); ctx.fill();
+    ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.6; ctx.stroke();
+    if (u.hq) { ctx.strokeStyle = '#ffd76a'; ctx.lineWidth = 2.4; ctx.beginPath(); ctx.arc(u.x, u.y, 13.5, 0, 6.29); ctx.stroke(); }
+    ctx.fillStyle = '#fff'; ctx.font = 'bold 10px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(u.hq ? '総' : hidden ? '伏' : u.hero ? '主' : '将', u.x, u.y + 0.5);
+    // 名前
+    ctx.font = 'bold 10.5px sans-serif';
+    ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(255,250,230,.9)';
+    const nm = u.name + (u.hero ? '（主人公）' : '');
+    ctx.strokeText(nm, u.x, u.y - 20);
+    ctx.fillStyle = '#2b2118'; ctx.fillText(nm, u.x, u.y - 20);
+    // 兵数バー
+    const w = 34, ratio = clamp(u.troops / u.initTroops, 0, 1);
+    ctx.fillStyle = 'rgba(30,25,15,.55)'; ctx.fillRect(u.x - w / 2, u.y + 13, w, 5);
+    ctx.fillStyle = ratio > 0.5 ? '#7ec850' : ratio > 0.25 ? '#e8b93e' : '#e05252';
+    ctx.fillRect(u.x - w / 2, u.y + 13, w * ratio, 5);
+    ctx.font = '9.5px sans-serif'; ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(255,250,230,.9)';
+    const tr = Math.max(0, Math.round(u.troops)) + (u.state === 'rout' ? ' 潰走' : '');
+    ctx.strokeText(tr, u.x, u.y + 24);
+    ctx.fillStyle = '#2b2118'; ctx.fillText(tr, u.x, u.y + 24);
+    if (u.engaged && Math.floor(now / 260) % 2 === 0) { ctx.font = '11px sans-serif'; ctx.fillText('⚔', u.x + 14, u.y - 10); }
+    ctx.restore();
+  }
+  function draw(now) {
+    ctx.clearRect(0, 0, FIELD_W, FIELD_H);
+    drawTiles(battle ? battle.tiles : previewTiles);
+    if (!battle) {
+      ctx.fillStyle = 'rgba(40,30,10,.45)'; ctx.fillRect(0, 0, FIELD_W, FIELD_H);
+      ctx.fillStyle = '#f3e6c8'; ctx.font = 'bold 30px serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText('設定を決めて「出陣」を押してください', FIELD_W / 2, FIELD_H / 2);
+      return;
+    }
+    for (const u of battle.units) drawUnit(u, now);
+    if (battle.captureT > 0.2 && battle.keep) {
+      ctx.strokeStyle = '#ffd76a'; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.arc(battle.keep.x, battle.keep.y, 22, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * (battle.captureT / 5)); ctx.stroke();
+    }
+    if (battle.over) {
+      ctx.fillStyle = 'rgba(30,20,5,.5)'; ctx.fillRect(0, 0, FIELD_W, FIELD_H);
+      ctx.fillStyle = battle.winner === 'ally' ? '#ffd76a' : battle.winner === 'draw' ? '#e8e2d2' : '#f0b0a0';
+      ctx.font = 'bold 52px serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(battle.winner === 'ally' ? '勝 利' : battle.winner === 'draw' ? '引 分' : '敗 北', FIELD_W / 2, FIELD_H / 2 - 16);
+      ctx.font = '19px serif'; ctx.fillStyle = '#f3e6c8';
+      ctx.fillText(battle.endReason || '', FIELD_W / 2, FIELD_H / 2 + 30);
+    }
+  }
+  function drainEvents() {
+    if (!battle || !battle.events.length) return;
+    const box = $('logBox');
+    for (const e of battle.events.splice(0)) {
+      const p = document.createElement('p');
+      if (e.cls) p.className = e.cls;
+      const t = document.createElement('span'); t.className = 't'; t.textContent = fmtTime(e.t);
+      p.appendChild(t); p.appendChild(document.createTextNode(e.text));
+      box.prepend(p);
+    }
+    while (box.children.length > 140) box.lastChild.remove();
+  }
+  function refreshPanels() {
+    if (!battle) return;
+    const a = sideTotals(battle.units, 'ally'), e = sideTotals(battle.units, 'enemy');
+    $('barAlly').style.width = (a / battle.initTotals.ally * 100) + '%';
+    $('barEnemy').style.width = (e / battle.initTotals.enemy * 100) + '%';
+    $('numAlly').textContent = Math.round(a);
+    $('numEnemy').textContent = Math.round(e);
+    $('clockLine').textContent = '経過 ' + fmtTime(battle.t) + (battle.mode === 'siege' ? ' ／ 日没まで ' + fmtTime(Math.max(0, TIME_LIMIT - battle.t)) : '') + (battle.river ? ' ／ 川あり' : ' ／ 川なし');
+    const list = $('unitList');
+    list.innerHTML = '';
+    for (const side of ['ally', 'enemy']) {
+      const head = document.createElement('p');
+      head.innerHTML = '<b>' + (side === 'ally' ? '🔵 自軍' : '🔴 敵軍') + '</b>';
+      list.appendChild(head);
+      for (const u of battle.units.filter(x => x.side === side)) {
+        const div = document.createElement('div');
+        div.className = 'unit';
+        if (selectedId === u.id) div.style.background = '#fdf0c0';
+        const T2 = TYPES[u.type];
+        const status = u.state === 'dead' ? '壊滅（' + (u.generalFate || '') + '）' : u.state === 'gone' ? '潰走・離脱' : u.state === 'rout' ? '潰走中' : u.state === 'hidden' ? '潜伏中' : u.engaged ? '戦闘中' : '進軍中';
+        const nm = document.createElement('span'); nm.className = 'nm' + (alive(u) ? '' : ' st');
+        nm.textContent = (u.hq ? '👑' : '') + u.name + (u.hero ? '（主人公）' : '');
+        const tp = document.createElement('span'); tp.className = 'tp ' + T2.cls; tp.textContent = T2.icon + T2.label;
+        const rest = document.createElement('span'); rest.className = 'stat';
+        rest.textContent = ' 統' + u.stats.lead + ' 武' + u.stats.war + ' 知' + u.stats.int + ' ／ 兵 ' + Math.max(0, Math.round(u.troops)) + ' ／ ' + status;
+        div.appendChild(nm); div.appendChild(tp); div.appendChild(rest);
+        div.addEventListener('click', () => { selectedId = u.id; refreshPanels(); });
+        list.appendChild(div);
+      }
+    }
+    if (battle.over && !$('summaryPanel').classList.contains('show')) showSummary();
+  }
+  function showSummary() {
+    const b = battle;
+    $('summaryPanel').classList.add('show');
+    $('verdict').textContent = b.winner === 'ally' ? '🏆 勝 利' : b.winner === 'draw' ? '🤝 引き分け' : '💀 敗 北';
+    $('verdict').style.color = b.winner === 'ally' ? '#a12c1d' : '#444';
+    const hero = b.units.find(u => u.hero);
+    const fate = !hero ? '' : hero.state === 'dead' ? '戦死' : hero.state === 'gone' || hero.state === 'rout' ? '潰走' : '生存';
+    const mvpA = [...b.units].filter(u => u.side === 'ally').sort((x, y) => y.dmgDealt - x.dmgDealt)[0];
+    const mvpE = [...b.units].filter(u => u.side === 'enemy').sort((x, y) => y.dmgDealt - x.dmgDealt)[0];
+    $('summaryBody').innerHTML =
+      '決着：' + (b.endReason || '') + '（' + fmtTime(b.t) + '）<br>' +
+      '残存兵力：自軍 ' + Math.round(sideTotals(b.units, 'ally')) + ' ／ 敵軍 ' + Math.round(sideTotals(b.units, 'enemy')) + '<br>' +
+      (hero ? '主人公 ' + hero.name + '：' + fate + '、残兵 ' + Math.max(0, Math.round(hero.troops)) + '、与えた被害 ' + Math.round(hero.dmgDealt) + '、撃破 ' + hero.kills + ' 部隊<br>' : '') +
+      '殊勲：自軍 ' + mvpA.name + '（被害 ' + Math.round(mvpA.dmgDealt) + '）／ 敵軍 ' + mvpE.name + '（被害 ' + Math.round(mvpE.dmgDealt) + '）';
+  }
+  let lastT = 0, acc = 0;
+  function frame(ts) {
+    requestAnimationFrame(frame);
+    const now = ts || 0;
+    const dt = Math.min((now - lastT) / 1000, 0.06); lastT = now;
+    if (battle && !battle.over && speed > 0) {
+      acc += dt * speed;
+      let n = 0;
+      while (acc >= 0.05 && n < 40) { stepBattle(battle, 0.05); acc -= 0.05; n++; }
+      drainEvents();
+    }
+    listTimer += dt;
+    if (battle && listTimer > 0.3) { listTimer = 0; refreshPanels(); }
+    draw(now);
+  }
+  requestAnimationFrame(frame);
+
+  // ---- 設定UI ----
+  const bindSlider = (id, valId, fmt) => {
+    $(id).addEventListener('input', e => { $(valId).textContent = fmt ? fmt(+e.target.value) : e.target.value; });
+  };
+  bindSlider('stLead', 'vLead'); bindSlider('stWar', 'vWar'); bindSlider('stInt', 'vInt'); bindSlider('stTroops', 'vTroops');
+  const PRESETS = { meisho: [88, 88, 88], sakushi: [70, 42, 95], noukin: [50, 95, 20], munou: [25, 25, 25] };
+  document.querySelectorAll('[data-preset]').forEach(btn => btn.addEventListener('click', () => {
+    const p = PRESETS[btn.dataset.preset];
+    $('stLead').value = p[0]; $('stWar').value = p[1]; $('stInt').value = p[2];
+    $('vLead').textContent = p[0]; $('vWar').textContent = p[1]; $('vInt').textContent = p[2];
+  }));
+  const segWire = (id, attr, cb) => {
+    $(id).addEventListener('click', e => {
+      const b = e.target.closest('button'); if (!b) return;
+      [...$(id).children].forEach(x => x.classList.toggle('on', x === b));
+      cb(b.dataset[attr]);
+    });
+  };
+  segWire('modeSeg', 'm', v => { cfgNow.mode = v; $('roleRow').style.display = v === 'siege' ? '' : 'none'; });
+  segWire('roleSeg', 'r', v => { cfgNow.role = v; });
+  segWire('gimmickSeg', 'g', v => { cfgNow.gimmick = v; });
+  segWire('diffSeg', 'd', v => { cfgNow.diff = +v; });
+  segWire('speedSeg', 'v', v => { speed = +v; });
+
+  function startBattle() {
+    const seed = Math.floor(Math.random() * 89999) + 10000;
+    const cfg = {
+      seed, mode: cfgNow.mode, role: cfgNow.role, gimmick: cfgNow.gimmick, diff: cfgNow.diff,
+      hero: {
+        name: ($('heroName').value || '名和信景').trim(),
+        stats: { lead: +$('stLead').value, war: +$('stWar').value, int: +$('stInt').value },
+        troops: +$('stTroops').value
+      }
+    };
+    battle = createBattle(cfg);
+    selectedId = null;
+    $('seedLine').textContent = seed + '（' + (cfg.mode === 'siege' ? '攻城戦' : '野戦') + '）';
+    $('logBox').innerHTML = '';
+    $('summaryPanel').classList.remove('show');
+    $('setupPanel').style.display = 'none';
+    speed = 1;
+    [...$('speedSeg').children].forEach(x => x.classList.toggle('on', x.dataset.v === '1'));
+    drainEvents();
+    refreshPanels();
+  }
+  $('startBtn').addEventListener('click', startBattle);
+  $('againBtn').addEventListener('click', () => { if (battle) { const c = battle.cfg; c.seed = Math.floor(Math.random() * 89999) + 10000; battle = createBattle(c); selectedId = null; $('seedLine').textContent = c.seed + '（' + (c.mode === 'siege' ? '攻城戦' : '野戦') + '）'; $('logBox').innerHTML = ''; $('summaryPanel').classList.remove('show'); speed = 1; [...$('speedSeg').children].forEach(x => x.classList.toggle('on', x.dataset.v === '1')); drainEvents(); refreshPanels(); } });
+  $('backBtn').addEventListener('click', () => { battle = null; $('setupPanel').style.display = ''; $('summaryPanel').classList.remove('show'); $('logBox').innerHTML = '<p>開戦を待っています…</p>'; $('unitList').innerHTML = '<p class="note">出陣すると両軍の将と能力が表示されます</p>'; });
+  cv.addEventListener('pointerdown', e => {
+    if (!battle) return;
+    const r = cv.getBoundingClientRect();
+    const x = (e.clientX - r.left) * FIELD_W / r.width, y = (e.clientY - r.top) * FIELD_H / r.height;
+    let best = null, bd = 26;
+    for (const u of battle.units) { if (!alive(u)) continue; const d = Math.hypot(u.x - x, u.y - y); if (d < bd) { bd = d; best = u; } }
+    selectedId = best ? best.id : null;
+    refreshPanels();
+  });
+}
+</script>
+</body>
+</html>
