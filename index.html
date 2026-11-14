@@ -115,7 +115,7 @@
         <div class="row" style="justify-content:center; margin-top:10px;">
           <button class="act big" id="startBtn">出 陣</button>
         </div>
-        <p class="note">川は戦場によってあったりなかったり。城攻めでは門を破って本丸を落とせば勝ち、制限時間守り切れば守備側の勝ちです。</p>
+        <p class="note">川は戦場によってあったりなかったり。城攻めでは門を破って本丸を落とせば勝ち、制限時間守り切れば守備側の勝ちです。兵は点で表示（1点≒55人）され、隊列の向きが進む方向、潰走すると隊列が崩れます。</p>
       </div>
 
       <div class="panel summary" id="summaryPanel">
@@ -233,6 +233,7 @@ function genElevation(tiles, rng, hills) {
     let v = 0;
     for (const h of hs) { const d2 = (x - h.x) ** 2 + (y - h.y) ** 2; v += h.p * Math.exp(-d2 / (h.r * h.r)); }
     T(tiles, x, y).h = v > 1.15 ? 2 : v > 0.55 ? 1 : 0;
+    T(tiles, x, y).hv = v; // 描画用の連続標高
   }
 }
 function genRiver(tiles, rng, fixedCol) {
@@ -240,8 +241,8 @@ function genRiver(tiles, rng, fixedCol) {
   let c = fixedCol !== undefined ? fixedCol + ri(rng, -1, 1) : ri(rng, 18, 27);
   const wide = rng() < 0.3 ? ri(rng, 6, 20) : -1;
   for (let y = 0; y < ROWS; y++) {
-    T(tiles, c, y).water = true;
-    if (y === wide || y === wide + 1) { if (inB(c + 1, y)) T(tiles, c + 1, y).water = true; }
+    T(tiles, c, y).water = true; T(tiles, c, y).hv = -0.6;
+    if (y === wide || y === wide + 1) { if (inB(c + 1, y)) { T(tiles, c + 1, y).water = true; T(tiles, c + 1, y).hv = -0.6; } }
     if (rng() < 0.42) c = clamp(c + ri(rng, -1, 1), 13, 32);
   }
   // 渡河点：橋1〜2、浅瀬0〜1
@@ -295,6 +296,7 @@ function genSiegeMap(rng) {
     const t = T(tiles, x, y);
     t.water = false; t.bridge = false; t.ford = false; t.forest = false;
     t.h = (x >= 40 && y >= 13 && y <= 18) ? 2 : 1;
+    t.hv = (x >= 40 && y >= 13 && y <= 18) ? 1.9 : 1.15;
     t.court = true;
     if (x === C.x0 || x === C.x1 || y === C.y0 || y === C.y1) t.wall = true;
   }
@@ -366,13 +368,22 @@ function findPath(tiles, sx, sy, tx, ty) {
 let UNIT_SEQ = 1;
 function makeUnit(side, gen, troops, x, y, opts) {
   opts = opts || {};
+  // 兵を点で描くための隊列スロット（8列×8段＋ゆらぎ、描画専用）
+  const slots = [];
+  for (let i = 0; i < 64; i++) {
+    const gx = i % 8, gy = (i / 8) | 0;
+    const h1 = Math.sin(i * 127.1 + UNIT_SEQ * 311.7) * 43758.5453;
+    const h2 = Math.sin(i * 269.5 + UNIT_SEQ * 183.3) * 28001.8384;
+    slots.push({ lx: (3.5 - gy) * 5.4 + (h1 - Math.floor(h1) - 0.5) * 2.4, ly: (gx - 3.5) * 5.4 + (h2 - Math.floor(h2) - 0.5) * 2.4 });
+  }
   return {
     id: UNIT_SEQ++, side, name: gen.name, stats: gen.stats, type: gen.type,
     troops, initTroops: troops, morale: 72 + gen.stats.lead * 0.25,
     x, y, path: [], target: null, state: opts.state || 'active',
     hq: !!opts.hq, hero: !!opts.hero, anchor: opts.anchor || null,
     decideT: Math.random() * 0.5, dmgDealt: 0, kills: 0, lastFrom: null,
-    recentDmg: 0, surpriseT: 0, engaged: false, dead: false, generalFate: null
+    recentDmg: 0, surpriseT: 0, engaged: false, dead: false, generalFate: null,
+    angle: side === 'ally' ? 0 : Math.PI, slots
   };
 }
 function sideTotals(units, side) {
@@ -770,80 +781,177 @@ if (typeof document !== 'undefined' && document.getElementById('cv')) {
   const cfgNow = { mode: 'field', role: 'attack', gimmick: 'auto', diff: 1 };
 
   function fmtTime(t) { const m = Math.floor(t / 60), s = Math.floor(t % 60); return m + '分' + String(s).padStart(2, '0') + '秒'; }
-  function drawTiles(tiles) {
+  // ---- 地形の立体描画：標高ファセット（ローポリ風）＋陰影でオフスクリーンに焼く ----
+  function rampColor(h, court, forest) {
+    const stops = [[-0.7, [93, 138, 134]], [0.0, [121, 162, 78]], [0.45, [140, 171, 84]], [0.8, [163, 163, 86]], [1.15, [171, 140, 88]], [1.6, [156, 132, 104]], [2.3, [143, 130, 114]]];
+    let a = stops[0], b = stops[stops.length - 1];
+    for (let i = 0; i < stops.length - 1; i++) if (h >= stops[i][0] && h <= stops[i + 1][0]) { a = stops[i]; b = stops[i + 1]; break; }
+    const f = clamp((h - a[0]) / Math.max(0.001, b[0] - a[0]), 0, 1);
+    let r = a[1][0] + (b[1][0] - a[1][0]) * f, g = a[1][1] + (b[1][1] - a[1][1]) * f, bl = a[1][2] + (b[1][2] - a[1][2]) * f;
+    if (court) { r = r * 0.45 + 201 * 0.55; g = g * 0.45 + 185 * 0.55; bl = bl * 0.45 + 137 * 0.55; }
+    if (forest) { r = r * 0.55 + 47 * 0.45; g = g * 0.55 + 92 * 0.45; bl = bl * 0.55 + 38 * 0.45; }
+    return [r, g, bl];
+  }
+  function buildTerrain(tiles) {
+    const tc = document.createElement('canvas'); tc.width = FIELD_W; tc.height = FIELD_H;
+    const g = tc.getContext('2d');
+    const hc = [];
+    for (let y = 0; y <= ROWS; y++) { hc.push([]); for (let x = 0; x <= COLS; x++) {
+      let s = 0, n = 0;
+      for (const [dx, dy] of [[-1, -1], [0, -1], [-1, 0], [0, 0]]) { const tx = x + dx, ty = y + dy; if (inB(tx, ty)) { s += (T(tiles, tx, ty).hv || 0); n++; } }
+      hc[y].push(s / Math.max(1, n));
+    } }
     for (let y = 0; y < ROWS; y++) for (let x = 0; x < COLS; x++) {
       const t = T(tiles, x, y), px = x * TILE, py = y * TILE;
-      ctx.fillStyle = t.h === 2 ? '#8aa657' : t.h === 1 ? '#9cb56b' : '#adc37c';
-      ctx.fillRect(px, py, TILE, TILE);
-      if (t.court) { ctx.fillStyle = '#cbb98a'; ctx.fillRect(px, py, TILE, TILE); }
-      if (t.water) {
-        ctx.fillStyle = t.ford ? '#93bcd4' : '#6fa3c8';
-        ctx.fillRect(px, py, TILE, TILE);
-        if (t.bridge) { ctx.fillStyle = '#9a6b3f'; ctx.fillRect(px, py + 3, TILE, TILE - 6); ctx.fillStyle = '#7d5527'; ctx.fillRect(px, py + 8, TILE, 2); }
-        else if (t.ford) { ctx.fillStyle = '#7d9db3'; ctx.fillRect(px + 3, py + 5, 4, 3); ctx.fillRect(px + 12, py + 12, 5, 3); }
+      if (t.water && !t.bridge) {
+        g.fillStyle = t.ford ? '#8fb8cf' : '#6f9fc4';
+        g.fillRect(px, py, TILE, TILE);
+        if (t.ford) { g.fillStyle = '#7d9db3'; g.fillRect(px + 3, py + 5, 4, 3); g.fillRect(px + 12, py + 12, 5, 3); g.fillRect(px + 7, py + 15, 4, 3); }
+        continue;
       }
-      if (t.forest) {
-        ctx.fillStyle = '#3f7031';
-        ctx.beginPath(); ctx.arc(px + 7, py + 12, 5.5, 0, 6.29); ctx.arc(px + 14, py + 9, 4.5, 0, 6.29); ctx.fill();
-      }
-      if (t.wall) {
-        ctx.fillStyle = '#8d8578'; ctx.fillRect(px, py, TILE, TILE);
-        ctx.strokeStyle = '#5f594e'; ctx.strokeRect(px + 0.5, py + 0.5, TILE - 1, TILE - 1);
-      }
-      if (t.gate) {
-        ctx.fillStyle = t.gateHp <= 0 ? '#b8a888' : '#7a4a21';
-        ctx.fillRect(px, py, TILE, TILE);
-        ctx.fillStyle = '#5d3714'; ctx.fillRect(px + 3, py, 2, TILE); ctx.fillRect(px + 15, py, 2, TILE);
-        if (t.gateHp > 0) { ctx.fillStyle = '#ffd76a'; ctx.font = '9px sans-serif'; ctx.textAlign = 'center'; ctx.fillText('門', px + 10, py + 13); }
-      }
-      if (t.keep) {
-        ctx.fillStyle = '#e8e2d2'; ctx.fillRect(px - 4, py - 2, TILE + 8, TILE + 4);
-        ctx.fillStyle = '#3c4654'; ctx.beginPath(); ctx.moveTo(px - 6, py - 2); ctx.lineTo(px + 10, py - 12); ctx.lineTo(px + 26, py - 2); ctx.closePath(); ctx.fill();
+      const a = hc[y][x], b = hc[y][x + 1], c = hc[y + 1][x], d = hc[y + 1][x + 1];
+      const gx = (b + d) / 2 - (a + c) / 2, gy = (c + d) / 2 - (a + b) / 2;
+      const bright = clamp(1 - gx * 0.20 - gy * 0.12, 0.7, 1.28);
+      const triDraw = (pts, hs) => {
+        const avg = (hs[0] + hs[1] + hs[2]) / 3;
+        const col = rampColor(avg, t.court, t.forest);
+        const f = bright * (1 + (avg - (a + b + c + d) / 4) * 0.10);
+        g.fillStyle = `rgb(${clamp(Math.round(col[0] * f), 0, 255)},${clamp(Math.round(col[1] * f), 0, 255)},${clamp(Math.round(col[2] * f), 0, 255)})`;
+        g.beginPath(); g.moveTo(pts[0][0], pts[0][1]); g.lineTo(pts[1][0], pts[1][1]); g.lineTo(pts[2][0], pts[2][1]); g.closePath(); g.fill();
+      };
+      triDraw([[px, py], [px + TILE, py], [px, py + TILE]], [a, b, c]);
+      triDraw([[px + TILE, py], [px + TILE, py + TILE], [px, py + TILE]], [b, d, c]);
+      if (t.water && t.bridge) { // 橋（板張り）
+        g.fillStyle = '#9a6b3f'; g.fillRect(px, py + 3, TILE, TILE - 6);
+        g.fillStyle = '#7d5527'; g.fillRect(px, py + 8, TILE, 2); g.fillRect(px + 6, py + 3, 2, TILE - 6); g.fillRect(px + 13, py + 3, 2, TILE - 6);
       }
     }
-    ctx.strokeStyle = 'rgba(60,50,20,.08)';
-    for (let x = 0; x <= COLS; x++) { ctx.beginPath(); ctx.moveTo(x * TILE, 0); ctx.lineTo(x * TILE, FIELD_H); ctx.stroke(); }
+    // 森：ローポリ風の三角の木
+    for (let y = 0; y < ROWS; y++) for (let x = 0; x < COLS; x++) {
+      const t = T(tiles, x, y); if (!t.forest) continue;
+      const px = x * TILE, py = y * TILE;
+      const hash = ((x * 73856093) ^ (y * 19349663)) >>> 0;
+      for (let k = 0; k < 2; k++) {
+        const ox = 4 + ((hash >> (k * 5)) % 11), oy = 13 + ((hash >> (k * 7 + 2)) % 5), s = 0.85 + ((hash >> (k * 3 + 1)) % 30) / 60;
+        g.fillStyle = '#6b4a26'; g.fillRect(px + ox - 1, py + oy - 2, 2, 4);
+        g.fillStyle = k ? '#3a7030' : '#2e5c24';
+        g.beginPath(); g.moveTo(px + ox - 6 * s, py + oy); g.lineTo(px + ox + 6 * s, py + oy); g.lineTo(px + ox, py + oy - 13 * s); g.closePath(); g.fill();
+      }
+    }
+    // 城壁：上面＋南面のブロック
+    for (let y = 0; y < ROWS; y++) for (let x = 0; x < COLS; x++) {
+      const t = T(tiles, x, y); if (!t.wall) continue;
+      const px = x * TILE, py = y * TILE;
+      g.fillStyle = 'rgba(40,32,16,.25)'; g.fillRect(px + 2, py + 8, TILE, TILE - 4);
+      g.fillStyle = '#71695a'; g.fillRect(px, py + 6, TILE, TILE - 6);
+      g.fillStyle = '#a39a86'; g.fillRect(px, py, TILE, TILE - 6);
+      g.fillStyle = '#bdb29a'; g.fillRect(px, py, TILE, 3);
+      g.fillStyle = '#a39a86'; g.fillRect(px + 2, py - 2, 4, 4); g.fillRect(px + 8, py - 2, 4, 4); g.fillRect(px + 14, py - 2, 4, 4);
+    }
+    // 本丸：二重の櫓
+    for (let y = 0; y < ROWS; y++) for (let x = 0; x < COLS; x++) {
+      const t = T(tiles, x, y); if (!t.keep) continue;
+      const px = x * TILE, py = y * TILE;
+      g.fillStyle = '#8d8578'; g.fillRect(px - 6, py + 5, TILE + 12, TILE - 1);
+      g.fillStyle = '#ece5d3'; g.fillRect(px - 4, py - 1, TILE + 8, TILE - 2);
+      g.fillStyle = '#3c4654'; g.beginPath(); g.moveTo(px - 7, py - 1); g.lineTo(px + 10, py - 12); g.lineTo(px + 27, py - 1); g.closePath(); g.fill();
+      g.fillStyle = '#ece5d3'; g.fillRect(px + 2, py - 9, 16, 8);
+      g.fillStyle = '#3c4654'; g.beginPath(); g.moveTo(px, py - 9); g.lineTo(px + 10, py - 16); g.lineTo(px + 20, py - 9); g.closePath(); g.fill();
+    }
+    return tc;
   }
+  function drawGate(t, px, py) {
+    if (t.gateHp <= 0) { // 破壊された門は瓦礫に
+      ctx.fillStyle = '#9a8d76';
+      ctx.beginPath(); ctx.moveTo(px + 1, py + 19); ctx.lineTo(px + 7, py + 11); ctx.lineTo(px + 13, py + 15); ctx.lineTo(px + 19, py + 10); ctx.lineTo(px + 19, py + 19); ctx.closePath(); ctx.fill();
+      return;
+    }
+    ctx.fillStyle = '#654321'; ctx.fillRect(px, py + 4, TILE, TILE - 4);
+    ctx.fillStyle = t.gateHp > 350 ? '#8a5a28' : '#755026'; ctx.fillRect(px, py, TILE, TILE - 4);
+    ctx.fillStyle = '#5d3714'; ctx.fillRect(px + 3, py, 2.4, TILE - 4); ctx.fillRect(px + 14.6, py, 2.4, TILE - 4);
+    if (t.gateHp <= 350) {
+      ctx.strokeStyle = 'rgba(30,15,0,.7)'; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(px + 4, py + 3); ctx.lineTo(px + 9, py + 10); ctx.lineTo(px + 7, py + 15); ctx.moveTo(px + 15, py + 2); ctx.lineTo(px + 12, py + 9); ctx.stroke();
+    }
+    ctx.fillStyle = '#ffd76a'; ctx.font = '9px sans-serif'; ctx.textAlign = 'center'; ctx.fillText('門', px + 10, py + 12);
+  }
+  const prevPos = new Map();
+  function dotCount(u) { return clamp(Math.round(u.troops / 55), 4, 64); } // 1点≒55人
   function drawUnit(u, now) {
-    if (!alive(u) && u.state !== 'hidden') return;
-    const hidden = u.state === 'hidden';
+    if (u.state === 'dead' || u.state === 'gone') return;
+    const hidden = u.state === 'hidden', rout = u.state === 'rout';
+    // 向き：移動方向へなめらかに（潰走時は自陣方向）
+    const pp = prevPos.get(u.id);
+    let ta = null;
+    if (rout) ta = u.side === 'ally' ? Math.PI : 0;
+    else if (pp && Math.hypot(u.x - pp.x, u.y - pp.y) > 0.4) ta = Math.atan2(u.y - pp.y, u.x - pp.x);
+    if (ta !== null) {
+      let d = ta - u.angle;
+      while (d > Math.PI) d -= 2 * Math.PI;
+      while (d < -Math.PI) d += 2 * Math.PI;
+      u.angle += clamp(d, -0.09, 0.09);
+    }
+    prevPos.set(u.id, { x: u.x, y: u.y });
+    const cos = Math.cos(u.angle), sin = Math.sin(u.angle);
+    const spread = rout ? 1.5 : 1;
     ctx.save();
-    if (hidden) ctx.globalAlpha = 0.45;
-    if (u.state === 'rout') ctx.globalAlpha = 0.75;
-    const col = u.side === 'ally' ? '#2456d6' : '#c22f1d';
-    if (selectedId === u.id) { ctx.strokeStyle = '#ffd76a'; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(u.x, u.y, 16, 0, 6.29); ctx.stroke(); }
-    ctx.fillStyle = col;
-    ctx.beginPath(); ctx.arc(u.x, u.y, 11, 0, 6.29); ctx.fill();
-    ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.6; ctx.stroke();
-    if (u.hq) { ctx.strokeStyle = '#ffd76a'; ctx.lineWidth = 2.4; ctx.beginPath(); ctx.arc(u.x, u.y, 13.5, 0, 6.29); ctx.stroke(); }
-    ctx.fillStyle = '#fff'; ctx.font = 'bold 10px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.fillText(u.hq ? '総' : hidden ? '伏' : u.hero ? '主' : '将', u.x, u.y + 0.5);
+    if (hidden) ctx.globalAlpha = 0.42;
+    if (selectedId === u.id) { ctx.strokeStyle = '#ffd76a'; ctx.lineWidth = 2.4; ctx.setLineDash([5, 4]); ctx.beginPath(); ctx.arc(u.x, u.y, 33, 0, 6.29); ctx.stroke(); ctx.setLineDash([]); }
+    // 影
+    ctx.fillStyle = 'rgba(40,30,10,.16)';
+    ctx.beginPath(); ctx.ellipse(u.x, u.y + 6, 27, 15, 0, 0, 6.29); ctx.fill();
+    // 兵（点の隊列）
+    const n = dotCount(u);
+    const baseCol = u.side === 'ally' ? '#2b4fd8' : '#cf3520';
+    for (let i = 0; i < n; i++) {
+      const s = u.slots[i];
+      const lx = s.lx * spread, ly = s.ly * spread;
+      const wx = u.x + lx * cos - ly * sin, wy = u.y + lx * sin + ly * cos;
+      ctx.fillStyle = (u.engaged && (i + (now / 110 | 0)) % 9 === 0) ? '#fff0a0' : baseCol;
+      ctx.beginPath(); ctx.arc(wx, wy, 2.3, 0, 6.29); ctx.fill();
+      ctx.fillStyle = 'rgba(255,255,255,.35)';
+      ctx.beginPath(); ctx.arc(wx - 0.7, wy - 0.7, 0.8, 0, 6.29); ctx.fill();
+    }
+    // 軍旗（隊列の後方）
+    const fx = u.x - 30 * cos, fy = u.y - 30 * sin;
+    ctx.strokeStyle = '#3a2c14'; ctx.lineWidth = 1.6;
+    ctx.beginPath(); ctx.moveTo(fx, fy + 3); ctx.lineTo(fx, fy - 22); ctx.stroke();
+    ctx.fillStyle = u.hero ? '#f2b134' : baseCol;
+    ctx.beginPath(); ctx.moveTo(fx, fy - 22); ctx.lineTo(fx, fy - 13); ctx.lineTo(fx - 13 * cos, fy - 13 * sin - 4.5); ctx.closePath(); ctx.fill();
+    if (u.hq) { ctx.fillStyle = '#ffd76a'; ctx.beginPath(); ctx.arc(fx, fy - 24, 2.6, 0, 6.29); ctx.fill(); }
     // 名前
-    ctx.font = 'bold 10.5px sans-serif';
-    ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(255,250,230,.9)';
-    const nm = u.name + (u.hero ? '（主人公）' : '');
-    ctx.strokeText(nm, u.x, u.y - 20);
-    ctx.fillStyle = '#2b2118'; ctx.fillText(nm, u.x, u.y - 20);
-    // 兵数バー
-    const w = 34, ratio = clamp(u.troops / u.initTroops, 0, 1);
-    ctx.fillStyle = 'rgba(30,25,15,.55)'; ctx.fillRect(u.x - w / 2, u.y + 13, w, 5);
+    ctx.font = 'bold 10.5px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(255,250,230,.92)';
+    const nm = (u.hq ? '👑' : '') + u.name + (u.hero ? '（主人公）' : '') + (hidden ? '［伏］' : '');
+    ctx.strokeText(nm, u.x, u.y - 36);
+    ctx.fillStyle = '#2b2118'; ctx.fillText(nm, u.x, u.y - 36);
+    // 兵数バー＋数値
+    const w = 40, ratio = clamp(u.troops / u.initTroops, 0, 1);
+    ctx.fillStyle = 'rgba(30,25,15,.55)'; ctx.fillRect(u.x - w / 2, u.y + 27, w, 5);
     ctx.fillStyle = ratio > 0.5 ? '#7ec850' : ratio > 0.25 ? '#e8b93e' : '#e05252';
-    ctx.fillRect(u.x - w / 2, u.y + 13, w * ratio, 5);
-    ctx.font = '9.5px sans-serif'; ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(255,250,230,.9)';
-    const tr = Math.max(0, Math.round(u.troops)) + (u.state === 'rout' ? ' 潰走' : '');
-    ctx.strokeText(tr, u.x, u.y + 24);
-    ctx.fillStyle = '#2b2118'; ctx.fillText(tr, u.x, u.y + 24);
-    if (u.engaged && Math.floor(now / 260) % 2 === 0) { ctx.font = '11px sans-serif'; ctx.fillText('⚔', u.x + 14, u.y - 10); }
+    ctx.fillRect(u.x - w / 2, u.y + 27, w * ratio, 5);
+    ctx.font = '9.5px sans-serif'; ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(255,250,230,.92)';
+    const tr = Math.max(0, Math.round(u.troops)) + (rout ? ' 潰走' : '');
+    ctx.strokeText(tr, u.x, u.y + 39);
+    ctx.fillStyle = '#2b2118'; ctx.fillText(tr, u.x, u.y + 39);
+    if (u.engaged && Math.floor(now / 260) % 2 === 0) { ctx.font = '11px sans-serif'; ctx.fillText('⚔', u.x + 30, u.y - 22); }
     ctx.restore();
   }
+  let terrainCv = null, previewCv = null;
+  previewCv = buildTerrain(previewTiles);
   function draw(now) {
     ctx.clearRect(0, 0, FIELD_W, FIELD_H);
-    drawTiles(battle ? battle.tiles : previewTiles);
+    const tc = battle ? terrainCv : previewCv;
+    if (tc) ctx.drawImage(tc, 0, 0);
     if (!battle) {
       ctx.fillStyle = 'rgba(40,30,10,.45)'; ctx.fillRect(0, 0, FIELD_W, FIELD_H);
       ctx.fillStyle = '#f3e6c8'; ctx.font = 'bold 30px serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
       ctx.fillText('設定を決めて「出陣」を押してください', FIELD_W / 2, FIELD_H / 2);
       return;
+    }
+    for (let y = 0; y < ROWS; y++) for (let x = 0; x < COLS; x++) {
+      const t = T(battle.tiles, x, y);
+      if (t.gate) drawGate(t, x * TILE, y * TILE);
     }
     for (const u of battle.units) drawUnit(u, now);
     if (battle.captureT > 0.2 && battle.keep) {
@@ -970,6 +1078,7 @@ if (typeof document !== 'undefined' && document.getElementById('cv')) {
       }
     };
     battle = createBattle(cfg);
+    terrainCv = buildTerrain(battle.tiles); prevPos.clear();
     selectedId = null;
     $('seedLine').textContent = seed + '（' + (cfg.mode === 'siege' ? '攻城戦' : '野戦') + '）';
     $('logBox').innerHTML = '';
@@ -981,13 +1090,13 @@ if (typeof document !== 'undefined' && document.getElementById('cv')) {
     refreshPanels();
   }
   $('startBtn').addEventListener('click', startBattle);
-  $('againBtn').addEventListener('click', () => { if (battle) { const c = battle.cfg; c.seed = Math.floor(Math.random() * 89999) + 10000; battle = createBattle(c); selectedId = null; $('seedLine').textContent = c.seed + '（' + (c.mode === 'siege' ? '攻城戦' : '野戦') + '）'; $('logBox').innerHTML = ''; $('summaryPanel').classList.remove('show'); speed = 1; [...$('speedSeg').children].forEach(x => x.classList.toggle('on', x.dataset.v === '1')); drainEvents(); refreshPanels(); } });
+  $('againBtn').addEventListener('click', () => { if (battle) { const c = battle.cfg; c.seed = Math.floor(Math.random() * 89999) + 10000; battle = createBattle(c); terrainCv = buildTerrain(battle.tiles); prevPos.clear(); selectedId = null; $('seedLine').textContent = c.seed + '（' + (c.mode === 'siege' ? '攻城戦' : '野戦') + '）'; $('logBox').innerHTML = ''; $('summaryPanel').classList.remove('show'); speed = 1; [...$('speedSeg').children].forEach(x => x.classList.toggle('on', x.dataset.v === '1')); drainEvents(); refreshPanels(); } });
   $('backBtn').addEventListener('click', () => { battle = null; $('setupPanel').style.display = ''; $('summaryPanel').classList.remove('show'); $('logBox').innerHTML = '<p>開戦を待っています…</p>'; $('unitList').innerHTML = '<p class="note">出陣すると両軍の将と能力が表示されます</p>'; });
   cv.addEventListener('pointerdown', e => {
     if (!battle) return;
     const r = cv.getBoundingClientRect();
     const x = (e.clientX - r.left) * FIELD_W / r.width, y = (e.clientY - r.top) * FIELD_H / r.height;
-    let best = null, bd = 26;
+    let best = null, bd = 36;
     for (const u of battle.units) { if (!alive(u)) continue; const d = Math.hypot(u.x - x, u.y - y); if (d < bd) { bd = d; best = u; } }
     selectedId = best ? best.id : null;
     refreshPanels();
